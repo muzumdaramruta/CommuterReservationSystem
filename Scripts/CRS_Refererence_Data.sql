@@ -1,6 +1,4 @@
--- ============================================================================
--- SECTION 7: INSERT REFERENCE DATA
--- ============================================================================
+-- INSERT REFERENCE DATA
 
 -- Insert day schedule data (7 days)
 INSERT INTO crs_day_schedule (sch_id, day_of_week, is_week_end) VALUES (1, 'MONDAY', 'N');

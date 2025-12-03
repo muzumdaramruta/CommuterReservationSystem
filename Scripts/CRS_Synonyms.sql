@@ -1,8 +1,5 @@
--- ============================================================================
--- SECTION 12: CREATE SYNONYMS FOR CRS_USER
--- ============================================================================
--- Connect as crs_user and create synonyms
--- CONN crs_user/User#2024
+
+-- CREATE SYNONYMS FOR CRS_USER
 
 -- Create synonyms (run these as crs_user after connecting)
 
