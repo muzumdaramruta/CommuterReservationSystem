@@ -3,9 +3,6 @@
 -- ============================================================================
 -- Description: Test all business rules, validations, and exception handling
 -- Connection: Run as crs_user (after synonyms are created)
--- Prerequisites: 
---   1. Sample trains must be loaded (from 08_CRS_Sample_Data.sql)
---   2. Synonyms must be created (from 07_CRS_Synonyms.sql)
 -- Duration: ~3-5 minutes
 -- Note: This script is designed to work with existing data
 -- ============================================================================
@@ -46,11 +43,6 @@ PROMPT ''
 -- ============================================================================
 -- SECTION 1: PASSENGER REGISTRATION TEST CASES
 -- ============================================================================
-
-PROMPT '============================================================================'
-PROMPT 'SECTION 1: PASSENGER REGISTRATION TEST CASES'
-PROMPT '============================================================================'
-PROMPT ''
 
 -- ============================================================================
 -- TEST CASE 1.1: Valid Passenger Registration (Adult)
