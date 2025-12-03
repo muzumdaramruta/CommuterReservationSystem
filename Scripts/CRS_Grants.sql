@@ -1,6 +1,4 @@
--- ============================================================================
--- SECTION 11: GRANT EXECUTE PERMISSIONS TO CRS_USER
--- ============================================================================
+-- GRANT EXECUTE PERMISSIONS TO CRS_USER
 
 -- Grant execute on package to crs_user
 GRANT EXECUTE ON crs_booking_pkg TO crs_user;

@@ -1,6 +1,4 @@
--- ============================================================================
--- SECTION 10: CREATE VIEWS FOR REPORTING
--- ============================================================================
+-- CREATE VIEWS FOR REPORTING
 
 -- View 1: Passenger Booking History
 CREATE OR REPLACE VIEW v_passenger_bookings AS
