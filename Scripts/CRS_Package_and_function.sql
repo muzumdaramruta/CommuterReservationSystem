@@ -62,6 +62,12 @@ CREATE OR REPLACE PACKAGE crs_booking_pkg AS
         p_dob IN DATE
     ) RETURN VARCHAR2;
     
+    -- Function to calculate fare with discounts
+    FUNCTION calculate_fare(
+        p_base_fare IN NUMBER,
+        p_dob       IN DATE
+    ) RETURN NUMBER;
+    
     -- Function to check if train operates on given date
     FUNCTION is_train_available(
         p_train_id    IN NUMBER,
@@ -81,7 +87,7 @@ CREATE OR REPLACE PACKAGE crs_booking_pkg AS
     -- Procedure to add train schedule
     PROCEDURE add_train_schedule(
         p_train_id IN NUMBER,
-        p_days     IN VARCHAR2  -- Comma separated day names
+        p_days     IN VARCHAR2
     );
     
 END crs_booking_pkg;
@@ -91,6 +97,56 @@ END crs_booking_pkg;
 -- CREATE PACKAGE BODY
 
 CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
+
+    -- ========================================================================
+    -- Function: get_passenger_category
+    -- Description: Returns passenger category based on age
+    -- ========================================================================
+    FUNCTION get_passenger_category(p_dob IN DATE) RETURN VARCHAR2 IS
+        v_age NUMBER;
+    BEGIN
+        v_age := FLOOR(MONTHS_BETWEEN(SYSDATE, p_dob) / 12);
+        
+        IF v_age < 18 THEN
+            RETURN 'MINOR';
+        ELSIF v_age >= 60 THEN
+            RETURN 'SENIOR CITIZEN';
+        ELSE
+            RETURN 'ADULT';
+        END IF;
+    END get_passenger_category;
+
+    -- ========================================================================
+    -- Function: calculate_fare
+    -- Description: Calculates fare with discounts for minors and seniors
+    --              - Minors (under 18): 50% discount
+    --              - Senior Citizens (60+): 30% discount
+    --              - Adults (18-59): Full fare
+    -- ========================================================================
+    FUNCTION calculate_fare(
+        p_base_fare IN NUMBER,
+        p_dob       IN DATE
+    ) RETURN NUMBER IS
+        v_age NUMBER;
+        v_final_fare NUMBER;
+        v_category VARCHAR2(20);
+    BEGIN
+        v_age := FLOOR(MONTHS_BETWEEN(SYSDATE, p_dob) / 12);
+        v_category := get_passenger_category(p_dob);
+        
+        IF v_age < 18 THEN
+            -- Minor: 50% discount
+            v_final_fare := p_base_fare * 0.50;
+        ELSIF v_age >= 60 THEN
+            -- Senior Citizen: 30% discount
+            v_final_fare := p_base_fare * 0.70;
+        ELSE
+            -- Adult: Full fare
+            v_final_fare := p_base_fare;
+        END IF;
+        
+        RETURN ROUND(v_final_fare, 2);
+    END calculate_fare;
 
     -- ========================================================================
     -- Procedure: register_passenger
@@ -116,7 +172,7 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             RAISE_APPLICATION_ERROR(-20004, 'First name and last name are required');
         END IF;
         
-        -- Validate date of birth (must be in the past and realistic)
+        -- Validate date of birth
         IF p_dob >= SYSDATE THEN
             RAISE_APPLICATION_ERROR(-20004, 'Date of birth must be in the past');
         END IF;
@@ -170,24 +226,6 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
     END register_passenger;
 
     -- ========================================================================
-    -- Function: get_passenger_category
-    -- Description: Returns passenger category based on age
-    -- ========================================================================
-    FUNCTION get_passenger_category(p_dob IN DATE) RETURN VARCHAR2 IS
-        v_age NUMBER;
-    BEGIN
-        v_age := FLOOR(MONTHS_BETWEEN(SYSDATE, p_dob) / 12);
-        
-        IF v_age < 18 THEN
-            RETURN 'MINOR';
-        ELSIF v_age >= 60 THEN
-            RETURN 'SENIOR CITIZEN';
-        ELSE
-            RETURN 'ADULT';
-        END IF;
-    END get_passenger_category;
-
-    -- ========================================================================
     -- Function: is_train_available
     -- Description: Checks if train operates on the given date
     -- ========================================================================
@@ -198,11 +236,9 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         v_day_name VARCHAR2(10);
         v_count NUMBER;
     BEGIN
-        -- Get day name for the travel date
         v_day_name := UPPER(TO_CHAR(p_travel_date, 'DAY'));
         v_day_name := TRIM(v_day_name);
         
-        -- Check if train operates on this day
         SELECT COUNT(*) INTO v_count
         FROM crs_train_schedule ts
         JOIN crs_day_schedule ds ON ts.sch_id = ds.sch_id
@@ -226,7 +262,6 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         v_booked_seats   NUMBER;
         v_available      NUMBER;
     BEGIN
-        -- Get total seats for the class
         IF p_seat_class = 'FC' THEN
             SELECT total_fc_seats INTO v_total_seats
             FROM crs_train_info
@@ -237,7 +272,6 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             WHERE train_id = p_train_id;
         END IF;
         
-        -- Count confirmed and waitlisted bookings
         SELECT COUNT(*) INTO v_booked_seats
         FROM crs_reservation
         WHERE train_id = p_train_id
@@ -245,7 +279,6 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
           AND seat_class = p_seat_class
           AND seat_status IN ('CONFIRMED', 'WAITLISTED');
         
-        -- Calculate available seats (40 confirmed + 5 waitlist = 45 max)
         v_available := (v_total_seats + 5) - v_booked_seats;
         
         RETURN v_available;
@@ -259,7 +292,7 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
 
     -- ========================================================================
     -- Procedure: book_ticket
-    -- Description: Books a ticket with validations and waitlist management
+    -- Description: Books a ticket with fare discounts based on passenger age
     -- ========================================================================
     PROCEDURE book_ticket(
         p_passenger_id IN NUMBER,
@@ -277,6 +310,11 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         v_total_seats    NUMBER;
         v_days_advance   NUMBER;
         v_duplicate_count NUMBER;
+        v_base_fare      NUMBER;
+        v_final_fare     NUMBER;
+        v_passenger_dob  DATE;
+        v_passenger_category VARCHAR2(20);
+        v_discount_applied VARCHAR2(50);
     BEGIN
         -- Validate train exists
         SELECT COUNT(*) INTO v_train_exists
@@ -287,21 +325,25 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             RAISE_APPLICATION_ERROR(-20001, 'Invalid train ID. Train does not exist.');
         END IF;
         
-        -- Validate passenger exists
-        SELECT COUNT(*) INTO v_passenger_exists
-        FROM crs_passenger
-        WHERE passenger_id = p_passenger_id;
+        -- Validate passenger exists and get DOB
+        BEGIN
+            SELECT date_of_birth INTO v_passenger_dob
+            FROM crs_passenger
+            WHERE passenger_id = p_passenger_id;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(-20004, 'Invalid passenger ID. Please register first.');
+        END;
         
-        IF v_passenger_exists = 0 THEN
-            RAISE_APPLICATION_ERROR(-20004, 'Invalid passenger ID. Please register first.');
-        END IF;
+        -- Get passenger category
+        v_passenger_category := get_passenger_category(v_passenger_dob);
         
         -- Validate seat class
         IF p_seat_class NOT IN ('FC', 'ECON') THEN
             RAISE_APPLICATION_ERROR(-20002, 'Invalid seat class. Must be FC or ECON.');
         END IF;
         
-        -- Validate travel date (must be future date)
+        -- Validate travel date
         IF p_travel_date < TRUNC(SYSDATE) THEN
             RAISE_APPLICATION_ERROR(-20002, 'Travel date cannot be in the past');
         END IF;
@@ -317,7 +359,7 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             RAISE_APPLICATION_ERROR(-20001, 'Train does not operate on ' || TO_CHAR(p_travel_date, 'Day, DD-MON-YYYY'));
         END IF;
         
-        -- Check for duplicate booking (same passenger, train, date, class)
+        -- Check for duplicate booking
         SELECT COUNT(*) INTO v_duplicate_count
         FROM crs_reservation
         WHERE passenger_id = p_passenger_id
@@ -330,15 +372,27 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             RAISE_APPLICATION_ERROR(-20007, 'Duplicate booking detected. You already have a booking for this train on this date.');
         END IF;
         
-        -- Get total seats for the class
+        -- Get base fare and total seats
         IF p_seat_class = 'FC' THEN
-            SELECT total_fc_seats INTO v_total_seats
+            SELECT total_fc_seats, fc_seat_fare INTO v_total_seats, v_base_fare
             FROM crs_train_info
             WHERE train_id = p_train_id;
         ELSE
-            SELECT total_econ_seats INTO v_total_seats
+            SELECT total_econ_seats, econ_seat_fare INTO v_total_seats, v_base_fare
             FROM crs_train_info
             WHERE train_id = p_train_id;
+        END IF;
+        
+        -- Calculate fare with discount
+        v_final_fare := calculate_fare(v_base_fare, v_passenger_dob);
+        
+        -- Determine discount message
+        IF v_passenger_category = 'MINOR' THEN
+            v_discount_applied := '50% discount (Minor)';
+        ELSIF v_passenger_category = 'SENIOR CITIZEN' THEN
+            v_discount_applied := '30% discount (Senior Citizen)';
+        ELSE
+            v_discount_applied := 'No discount (Adult)';
         END IF;
         
         -- Count confirmed bookings
@@ -361,11 +415,9 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         
         -- Determine seat status and waitlist position
         IF v_confirmed_seats < v_total_seats THEN
-            -- Seats available - confirm booking
             p_seat_status := 'CONFIRMED';
             p_waitlist_pos := NULL;
         ELSE
-            -- Seats full - add to waitlist
             p_seat_status := 'WAITLISTED';
             SELECT NVL(MAX(waitlist_position), 0) + 1 INTO p_waitlist_pos
             FROM crs_reservation
@@ -386,15 +438,19 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         
         COMMIT;
         
-        -- Display confirmation
+        -- Display confirmation with fare details
         DBMS_OUTPUT.PUT_LINE('==============================================');
         DBMS_OUTPUT.PUT_LINE('Booking ' || p_seat_status);
         DBMS_OUTPUT.PUT_LINE('==============================================');
         DBMS_OUTPUT.PUT_LINE('Booking ID: ' || p_booking_id);
         DBMS_OUTPUT.PUT_LINE('Passenger ID: ' || p_passenger_id);
+        DBMS_OUTPUT.PUT_LINE('Category: ' || v_passenger_category);
         DBMS_OUTPUT.PUT_LINE('Train ID: ' || p_train_id);
         DBMS_OUTPUT.PUT_LINE('Travel Date: ' || TO_CHAR(p_travel_date, 'DD-MON-YYYY'));
         DBMS_OUTPUT.PUT_LINE('Class: ' || p_seat_class);
+        DBMS_OUTPUT.PUT_LINE('Base Fare: $' || v_base_fare);
+        DBMS_OUTPUT.PUT_LINE('Discount: ' || v_discount_applied);
+        DBMS_OUTPUT.PUT_LINE('Final Fare: $' || v_final_fare);
         DBMS_OUTPUT.PUT_LINE('Status: ' || p_seat_status);
         IF p_waitlist_pos IS NOT NULL THEN
             DBMS_OUTPUT.PUT_LINE('Waitlist Position: ' || p_waitlist_pos);
@@ -421,10 +477,7 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         v_travel_date    DATE;
         v_seat_class     VARCHAR2(10);
         v_waitlist_booking NUMBER;
-        v_train_number   VARCHAR2(20);
-        v_passenger_name VARCHAR2(150);
     BEGIN
-        -- Check if booking exists
         SELECT COUNT(*) INTO v_booking_exists
         FROM crs_reservation
         WHERE booking_id = p_booking_id;
@@ -433,18 +486,15 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             RAISE_APPLICATION_ERROR(-20005, 'Invalid booking ID. Booking not found.');
         END IF;
         
-        -- Get booking details
         SELECT seat_status, train_id, travel_date, seat_class
         INTO v_current_status, v_train_id, v_travel_date, v_seat_class
         FROM crs_reservation
         WHERE booking_id = p_booking_id;
         
-        -- Check if already cancelled
         IF v_current_status = 'CANCELLED' THEN
             RAISE_APPLICATION_ERROR(-20005, 'Booking already cancelled');
         END IF;
         
-        -- Cancel the booking
         UPDATE crs_reservation
         SET seat_status = 'CANCELLED',
             waitlist_position = NULL,
@@ -453,9 +503,7 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         
         p_message := 'Booking ID ' || p_booking_id || ' cancelled successfully.';
         
-        -- If cancelled booking was CONFIRMED, promote first waitlisted passenger
         IF v_current_status = 'CONFIRMED' THEN
-            -- Find first waitlisted booking for same train, date, class
             BEGIN
                 SELECT booking_id INTO v_waitlist_booking
                 FROM crs_reservation
@@ -465,14 +513,12 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
                   AND seat_status = 'WAITLISTED'
                   AND waitlist_position = 1;
                 
-                -- Promote waitlisted booking to confirmed
                 UPDATE crs_reservation
                 SET seat_status = 'CONFIRMED',
                     waitlist_position = NULL,
                     updated_date = SYSDATE
                 WHERE booking_id = v_waitlist_booking;
                 
-                -- Update waitlist positions for remaining passengers
                 UPDATE crs_reservation
                 SET waitlist_position = waitlist_position - 1,
                     updated_date = SYSDATE
@@ -483,10 +529,8 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
                   AND waitlist_position > 1;
                 
                 p_message := p_message || ' Waitlisted booking ID ' || v_waitlist_booking || ' has been confirmed.';
-                
             EXCEPTION
                 WHEN NO_DATA_FOUND THEN
-                    -- No waitlisted passengers to promote
                     NULL;
             END;
         END IF;
@@ -514,7 +558,6 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
     ) IS
         v_count NUMBER;
     BEGIN
-        -- Validate train number uniqueness
         SELECT COUNT(*) INTO v_count
         FROM crs_train_info
         WHERE train_number = p_train_number;
@@ -523,20 +566,16 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
             RAISE_APPLICATION_ERROR(-20001, 'Train number already exists');
         END IF;
         
-        -- Validate stations are different
         IF UPPER(p_source_station) = UPPER(p_dest_station) THEN
             RAISE_APPLICATION_ERROR(-20001, 'Source and destination stations must be different');
         END IF;
         
-        -- Validate fares
         IF p_fc_fare <= 0 OR p_econ_fare <= 0 THEN
             RAISE_APPLICATION_ERROR(-20001, 'Fares must be positive values');
         END IF;
         
-        -- Generate train ID
         SELECT crs_train_seq.NEXTVAL INTO p_train_id FROM DUAL;
         
-        -- Insert train
         INSERT INTO crs_train_info (
             train_id, train_number, source_station, dest_station,
             total_fc_seats, total_econ_seats, fc_seat_fare, econ_seat_fare
@@ -560,7 +599,7 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
     -- ========================================================================
     PROCEDURE add_train_schedule(
         p_train_id IN NUMBER,
-        p_days     IN VARCHAR2  -- Comma separated: 'MONDAY,TUESDAY,WEDNESDAY'
+        p_days     IN VARCHAR2
     ) IS
         v_day VARCHAR2(50);
         v_sch_id NUMBER;
@@ -570,25 +609,20 @@ CREATE OR REPLACE PACKAGE BODY crs_booking_pkg AS
         v_remaining := p_days;
         
         LOOP
-            -- Find position of comma
             v_pos := INSTR(v_remaining, ',');
             
             IF v_pos > 0 THEN
-                -- Extract day before comma
                 v_day := TRIM(SUBSTR(v_remaining, 1, v_pos - 1));
                 v_remaining := SUBSTR(v_remaining, v_pos + 1);
             ELSE
-                -- Last day in list
                 v_day := TRIM(v_remaining);
             END IF;
             
-            -- Get schedule ID for the day
             BEGIN
                 SELECT sch_id INTO v_sch_id
                 FROM crs_day_schedule
                 WHERE day_of_week = UPPER(v_day);
                 
-                -- Insert train schedule
                 INSERT INTO crs_train_schedule (tsch_id, sch_id, train_id, is_in_service)
                 VALUES (crs_train_sch_seq.NEXTVAL, v_sch_id, p_train_id, 'Y');
                 
