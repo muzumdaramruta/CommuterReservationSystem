@@ -3,8 +3,9 @@
 -- ============================================================================
 -- Description: Test all business rules, validations, and exception handling
 -- Connection: Run as crs_user (after synonyms are created)
+-- Prerequisites: Sample data loaded via 08_CRS_Sample_Data.sql
 -- Duration: ~3-5 minutes
--- Note: This script is designed to work with existing data
+-- Note: Use Clear_Sample_Data.sql before re-running for fresh results
 -- ============================================================================
 
 SET SERVEROUTPUT ON SIZE UNLIMITED;
@@ -24,7 +25,6 @@ PROMPT '--------------------------------------------'
 DECLARE
     v_count NUMBER;
 BEGIN
-    -- Check if trains exist using view
     SELECT COUNT(*) INTO v_count FROM v_train_availability;
     DBMS_OUTPUT.PUT_LINE('Existing trains found: ' || v_count);
     
@@ -37,12 +37,17 @@ END;
 /
 
 PROMPT ''
-PROMPT 'NOTE: This test script creates unique test data for each run.'
+PROMPT 'NOTE: Clear data before re-running (Clear_Sample_Data.sql + 08_CRS_Sample_Data.sql)'
 PROMPT ''
 
 -- ============================================================================
 -- SECTION 1: PASSENGER REGISTRATION TEST CASES
 -- ============================================================================
+
+PROMPT '============================================================================'
+PROMPT 'SECTION 1: PASSENGER REGISTRATION TEST CASES'
+PROMPT '============================================================================'
+PROMPT ''
 
 -- ============================================================================
 -- TEST CASE 1.1: Valid Passenger Registration (Adult)
@@ -52,8 +57,6 @@ PROMPT 'TEST CASE 1.1: Valid Adult Passenger Registration'
 PROMPT '--------------------------------------------'
 DECLARE
     v_passenger_id NUMBER;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(1000, 9999))), 4, '0');
 BEGIN
     crs_booking_pkg.register_passenger(
         p_first_name => 'John',
@@ -64,8 +67,8 @@ BEGIN
         p_address_city => 'Boston',
         p_address_state => 'MA',
         p_address_zip => '02101',
-        p_email => 'john.smith.' || v_timestamp || '.' || v_random || '@test.email',
-        p_phone => '617' || v_random || SUBSTR(v_timestamp, -4),
+        p_email => 'john.smith.test@email.com',
+        p_phone => '6171111111',
         p_passenger_id => v_passenger_id
     );
     DBMS_OUTPUT.PUT_LINE('✓ TEST PASSED: Adult passenger registered successfully');
@@ -86,8 +89,6 @@ PROMPT 'TEST CASE 1.2: Minor Passenger Registration'
 PROMPT '--------------------------------------------'
 DECLARE
     v_passenger_id NUMBER;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(2000, 2999))), 4, '0');
 BEGIN
     crs_booking_pkg.register_passenger(
         p_first_name => 'Emma',
@@ -98,8 +99,8 @@ BEGIN
         p_address_city => 'Cambridge',
         p_address_state => 'MA',
         p_address_zip => '02139',
-        p_email => 'emma.johnson.' || v_timestamp || '.' || v_random || '@test.email',
-        p_phone => '617' || v_random || SUBSTR(v_timestamp, -4),
+        p_email => 'emma.johnson.test@email.com',
+        p_phone => '6172222222',
         p_passenger_id => v_passenger_id
     );
     DBMS_OUTPUT.PUT_LINE('✓ TEST PASSED: Minor passenger registered successfully');
@@ -119,8 +120,6 @@ PROMPT 'TEST CASE 1.3: Senior Citizen Registration'
 PROMPT '--------------------------------------------'
 DECLARE
     v_passenger_id NUMBER;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(3000, 3999))), 4, '0');
 BEGIN
     crs_booking_pkg.register_passenger(
         p_first_name => 'Robert',
@@ -131,8 +130,8 @@ BEGIN
         p_address_city => 'Brookline',
         p_address_state => 'MA',
         p_address_zip => '02445',
-        p_email => 'robert.williams.' || v_timestamp || '.' || v_random || '@test.email',
-        p_phone => '617' || v_random || SUBSTR(v_timestamp, -4),
+        p_email => 'robert.williams.test@email.com',
+        p_phone => '6173333333',
         p_passenger_id => v_passenger_id
     );
     DBMS_OUTPUT.PUT_LINE('✓ TEST PASSED: Senior citizen registered successfully');
@@ -152,30 +151,18 @@ PROMPT 'TEST CASE 1.4: Duplicate Email Registration (Should Fail)'
 PROMPT '--------------------------------------------'
 DECLARE
     v_passenger_id NUMBER;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random1 VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(4000, 4999))), 4, '0');
-    v_random2 VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(5000, 5999))), 4, '0');
-    v_test_email VARCHAR2(100) := 'duplicate.' || v_timestamp || '@test.email';
 BEGIN
-    -- First registration
     crs_booking_pkg.register_passenger(
-        p_first_name => 'First', p_middle_name => NULL, p_last_name => 'User',
+        p_first_name => 'Jane',
+        p_middle_name => NULL,
+        p_last_name => 'Doe',
         p_dob => TO_DATE('1985-07-25', 'YYYY-MM-DD'),
-        p_address_line1 => '111 First St', p_address_city => 'Boston',
-        p_address_state => 'MA', p_address_zip => '02115',
-        p_email => v_test_email,
-        p_phone => '617' || v_random1 || SUBSTR(v_timestamp, -4),
-        p_passenger_id => v_passenger_id
-    );
-    
-    -- Try duplicate email
-    crs_booking_pkg.register_passenger(
-        p_first_name => 'Second', p_middle_name => NULL, p_last_name => 'User',
-        p_dob => TO_DATE('1985-07-25', 'YYYY-MM-DD'),
-        p_address_line1 => '222 Second St', p_address_city => 'Boston',
-        p_address_state => 'MA', p_address_zip => '02115',
-        p_email => v_test_email,  -- Duplicate email
-        p_phone => '617' || v_random2 || SUBSTR(v_timestamp, -4),
+        p_address_line1 => '321 Elm Street',
+        p_address_city => 'Boston',
+        p_address_state => 'MA',
+        p_address_zip => '02115',
+        p_email => 'john.smith.test@email.com',  -- Duplicate email from TEST 1.1
+        p_phone => '6174444444',
         p_passenger_id => v_passenger_id
     );
     DBMS_OUTPUT.PUT_LINE('✗ TEST FAILED: Should have raised duplicate email error');
@@ -200,29 +187,18 @@ PROMPT 'TEST CASE 1.5: Duplicate Phone Registration (Should Fail)'
 PROMPT '--------------------------------------------'
 DECLARE
     v_passenger_id NUMBER;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(6000, 6999))), 4, '0');
-    v_test_phone VARCHAR2(15) := '617' || v_random || '9999';
 BEGIN
-    -- First registration with unique phone
     crs_booking_pkg.register_passenger(
-        p_first_name => 'Phone', p_middle_name => NULL, p_last_name => 'Test1',
+        p_first_name => 'Sarah',
+        p_middle_name => NULL,
+        p_last_name => 'Brown',
         p_dob => TO_DATE('1992-11-30', 'YYYY-MM-DD'),
-        p_address_line1 => '333 Phone St', p_address_city => 'Boston',
-        p_address_state => 'MA', p_address_zip => '02118',
-        p_email => 'phone.test1.' || v_timestamp || '@test.email',
-        p_phone => v_test_phone,
-        p_passenger_id => v_passenger_id
-    );
-    
-    -- Try duplicate phone
-    crs_booking_pkg.register_passenger(
-        p_first_name => 'Phone', p_middle_name => NULL, p_last_name => 'Test2',
-        p_dob => TO_DATE('1992-11-30', 'YYYY-MM-DD'),
-        p_address_line1 => '444 Phone St', p_address_city => 'Boston',
-        p_address_state => 'MA', p_address_zip => '02118',
-        p_email => 'phone.test2.' || v_timestamp || '@test.email',
-        p_phone => v_test_phone,  -- Duplicate phone
+        p_address_line1 => '555 Maple Drive',
+        p_address_city => 'Boston',
+        p_address_state => 'MA',
+        p_address_zip => '02118',
+        p_email => 'sarah.brown.test@email.com',
+        p_phone => '6171111111',  -- Duplicate phone from TEST 1.1
         p_passenger_id => v_passenger_id
     );
     DBMS_OUTPUT.PUT_LINE('✗ TEST FAILED: Should have raised duplicate phone error');
@@ -247,8 +223,6 @@ PROMPT 'TEST CASE 1.6: Future Date of Birth (Should Fail)'
 PROMPT '--------------------------------------------'
 DECLARE
     v_passenger_id NUMBER;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(7000, 7999))), 4, '0');
 BEGIN
     crs_booking_pkg.register_passenger(
         p_first_name => 'Future',
@@ -259,8 +233,8 @@ BEGIN
         p_address_city => 'Boston',
         p_address_state => 'MA',
         p_address_zip => '02120',
-        p_email => 'future.baby.' || v_timestamp || '@test.email',
-        p_phone => '617' || v_random || '8888',
+        p_email => 'future.baby.test@email.com',
+        p_phone => '6175555555',
         p_passenger_id => v_passenger_id
     );
     DBMS_OUTPUT.PUT_LINE('✗ TEST FAILED: Should have raised future DOB error');
@@ -289,10 +263,7 @@ DECLARE
     v_seat_status VARCHAR2(20);
     v_waitlist_pos NUMBER;
     v_travel_date DATE;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random_suffix VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(1000, 9999))), 4, '0');
 BEGIN
-    -- Get first train ID from view
     SELECT MIN(train_id) INTO v_first_train_id FROM v_train_availability;
     
     IF v_first_train_id IS NULL THEN
@@ -309,8 +280,8 @@ BEGIN
         p_dob => TO_DATE('1988-06-12', 'YYYY-MM-DD'),
         p_address_line1 => '234 Test Street', p_address_city => 'Boston',
         p_address_state => 'MA', p_address_zip => '02125',
-        p_email => 'test.booker.' || v_timestamp || '.' || v_random_suffix || '@test.email',
-        p_phone => '617' || v_random_suffix || '2345',
+        p_email => 'test.booker@email.com',
+        p_phone => '6176666666',
         p_passenger_id => v_passenger_id
     );
     
@@ -328,7 +299,6 @@ BEGIN
         FOR i IN 1..7 LOOP
             v_travel_date := TRUNC(SYSDATE) + i;
             
-            -- Check if train operates on this day
             IF crs_booking_pkg.is_train_available(v_first_train_id, v_travel_date) THEN
                 EXIT;
             END IF;
@@ -491,10 +461,7 @@ DECLARE
     v_message VARCHAR2(500);
     v_first_train_id NUMBER;
     v_travel_date DATE;
-    v_timestamp VARCHAR2(20) := TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    v_random_suffix VARCHAR2(10) := LPAD(TO_CHAR(TRUNC(DBMS_RANDOM.VALUE(5000, 9999))), 4, '0');
 BEGIN
-    -- Get first train from view
     SELECT MIN(train_id) INTO v_first_train_id FROM v_train_availability;
     
     -- Register passenger for cancellation test
@@ -503,8 +470,8 @@ BEGIN
         p_dob => TO_DATE('1990-01-01', 'YYYY-MM-DD'),
         p_address_line1 => '567 Cancel Rd', p_address_city => 'Boston',
         p_address_state => 'MA', p_address_zip => '02127',
-        p_email => 'cancel.tester.' || v_timestamp || '.' || v_random_suffix || '@test.email',
-        p_phone => '617' || v_random_suffix || '3456',
+        p_email => 'cancel.tester@email.com',
+        p_phone => '6177777777',
         p_passenger_id => v_passenger_id
     );
     
@@ -657,7 +624,6 @@ DECLARE
     v_total_passengers NUMBER;
     v_total_trains NUMBER;
 BEGIN
-    -- Get counts from views (crs_user has access to these)
     SELECT COUNT(DISTINCT passenger_id) INTO v_total_passengers FROM v_passenger_bookings;
     SELECT COUNT(*) INTO v_total_trains FROM v_train_availability;
     
@@ -671,7 +637,7 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE('- Ticket Cancellation: 3 test cases');
     DBMS_OUTPUT.PUT_LINE('- Report Views: 6 views validated');
     DBMS_OUTPUT.PUT_LINE('');
-    DBMS_OUTPUT.PUT_LINE('Total: 18 test cases executed');
+    DBMS_OUTPUT.PUT_LINE('Total: 20 test cases executed');
     DBMS_OUTPUT.PUT_LINE('');
     DBMS_OUTPUT.PUT_LINE('Views Tested:');
     DBMS_OUTPUT.PUT_LINE('  1. v_train_availability - Train schedule and capacity');
